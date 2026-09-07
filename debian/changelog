@@ -1,3 +1,14 @@
+hifiberry-librespot (0.8.0.11) stable; urgency=medium
+
+  * Packaging split out of the hifiberry-os tree into its own repository;
+    hifiberry-os now clones it rather than carrying debian/ and the helper
+    scripts itself. Nothing the package installs changes. The bump exists so
+    that the artefact built from the split-out sources is distinguishable
+    from the 0.8.0.10 built from the old in-tree packaging, which otherwise
+    carries the same version and different provenance.
+
+ -- HiFiBerry <support@hifiberry.com>  Mon, 07 Sep 2026 07:32:27 +0000
+
 hifiberry-librespot (0.8.0.10) stable; urgency=medium
 
   * Ship the WebUI player descriptor and icon from
