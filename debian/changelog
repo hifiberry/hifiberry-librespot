@@ -1,3 +1,22 @@
+hifiberry-librespot (0.8.0.12) stable; urgency=medium
+
+  * postinst: stop writing the WebUI descriptor and icon into
+    /etc/hifiberry/players.d. 0.8.0.10 moved both to
+    /usr/share/hifiberry/players.d because a descriptor is package data, but
+    the postinst kept writing the /etc copy on every configure, and
+    configurator lets /etc shadow /usr/share -- so the packaged descriptor was
+    masked on every device and no device ever read it. The two had drifted:
+    the shipped one declares conflicts_with ["soloist"], the /etc copy did
+    not, so that conflict was silently inert wherever this package was
+    installed. It also clobbered any deliberate administrator override on
+    every upgrade, which is the one thing /etc is meant to allow.
+  * postinst: remove the stale /etc copy when upgrading from an affected
+    version, since nothing else will -- it stopped being a conffile in
+    0.8.0.10, so dpkg does not track it. A file present on a fresh install is
+    left alone: there it is an administrator's own override.
+
+ -- HiFiBerry <support@hifiberry.com>  Mon, 07 Sep 2026 09:22:54 +0000
+
 hifiberry-librespot (0.8.0.11) stable; urgency=medium
 
   * Packaging split out of the hifiberry-os tree into its own repository;
