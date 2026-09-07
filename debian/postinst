@@ -6,28 +6,24 @@ set -e
 
 case "$1" in
     configure)
-        # Register in Web UI player registry
-        HBOS_PLAYERS_D="/etc/hifiberry/players.d"
-        mkdir -p "$HBOS_PLAYERS_D/icons"
-
-        cat > "$HBOS_PLAYERS_D/librespot.json" <<'PLAYEREOF'
-{
-    "name": "Spotify",
-    "provided_by": "librespot",
-    "systemd_service": "librespot",
-    "icon": "librespot",
-    "allow_change": true,
-    "maintainer_name": "Wanted",
-    "maintainer_url": "https://github.com/hifiberry/hifiberry-os/blob/hbosng/docs/maintainers-wanted.md"
-}
-PLAYEREOF
-
-        # Install icon
-        if [ -f /usr/share/hifiberry-librespot/icons/spotify.svg ]; then
-            cp /usr/share/hifiberry-librespot/icons/spotify.svg "$HBOS_PLAYERS_D/icons/librespot.svg"
+        # Up to 0.8.0.11 this postinst wrote the WebUI descriptor and its icon
+        # into /etc/hifiberry/players.d. Since 0.8.0.10 the package also ships
+        # both under /usr/share/hifiberry/players.d, and configurator lets /etc
+        # shadow /usr/share -- so the copy written here permanently masked the
+        # packaged one, exactly the clobbering the ACR note below forbids.
+        #
+        # The two had already drifted: the shipped descriptor declares
+        # conflicts_with ["soloist"] and the /etc copy did not, so that conflict
+        # was inert on every device that had this package installed.
+        #
+        # Remove the stale copy, but only when upgrading from an affected
+        # version. On a fresh install a file here is an administrator's own
+        # override, which is what /etc is for.
+        if [ -n "$2" ] && dpkg --compare-versions "$2" lt 0.8.0.12; then
+            rm -f /etc/hifiberry/players.d/librespot.json
+            rm -f /etc/hifiberry/players.d/icons/librespot.svg
+            echo "Removed the /etc descriptor that shadowed the packaged one."
         fi
-
-        echo "Registered Spotify in Web UI player registry."
 
         # Register systemd permissions via configserver drop-in
         mkdir -p /etc/configserver/conf.d
