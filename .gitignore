@@ -1,0 +1,30 @@
+# Debian build output
+*.deb
+*.changes
+*.buildinfo
+*.dsc
+*.tar.gz
+*.tar.xz
+*.build
+
+# Debian build artifacts
+debian/.debhelper/
+debian/debhelper-build-stamp
+debian/files
+debian/*.postinst.debhelper
+debian/*.postrm.debhelper
+debian/*.substvars
+debian/*.debhelper.log
+debian/hifiberry-librespot/
+
+# Rust/rustup homes created by debian/rules inside the source tree
+debian/cargo_home/
+debian/rustup_home/
+
+# Sources and build dirs created by debian/rules during build
+librespot-source/
+target/
+build_workspace/
+build_tmp/
+build_home/
+build.sh
