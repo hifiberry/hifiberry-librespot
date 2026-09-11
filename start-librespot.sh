@@ -4,8 +4,14 @@
 # This script handles startup of librespot with the system's pretty hostname
 # and auto-configures audio parameters based on the detected sound card
 #
-# Version: 1.1.2
+# Version: 1.1.3
 # Changelog:
+# - v1.1.3: Added SYSTEM_CACHE environment knob and pass --system-cache so
+#           librespot persists its credentials. Without it the reusable
+#           credentials received over zeroconf only ever live in memory, so a
+#           restarted player cannot reconnect on its own. Per-user
+#           (~/.librespot) or /var/lib/librespot, the same split raat and
+#           squeezelite use.
 # - v1.1.2: Added VOLUME_CTRL environment knob to select librespot's volume curve
 #           (linear|log|cubic|fixed). Default remains "linear" (unchanged behaviour);
 #           integrators can override via a systemd drop-in (Environment=VOLUME_CTRL=cubic).
@@ -50,6 +56,26 @@ BACKEND="rodio"
 #   [Service]
 #   Environment=VOLUME_CTRL=cubic
 VOLUME_CTRL="${VOLUME_CTRL:-linear}"
+
+# Directory where librespot persists credentials and volume.
+# This is not the audio cache: --disable-audio-cache stays on below, and
+# --system-cache never stores audio, only credentials.json and volume, a few
+# hundred bytes in total.
+#
+# Per-user (~/.librespot) for the user service, system directory otherwise:
+# the same split start-raat and start-squeezelite use. /var/lib/librespot is
+# also where spotify-event.sh already looks.
+#
+# Integrators can point it elsewhere, or disable persistence with an empty
+# value, via a systemd drop-in:
+#   [Service]
+#   Environment=SYSTEM_CACHE=/var/lib/hifiberry/librespot
+SYSTEM_CACHE_DEFAULT="/var/lib/librespot"
+if [ -n "${XDG_RUNTIME_DIR:-}" ] || [ -n "${XDG_SESSION_ID:-}" ]; then
+  # Likely running as a user service/session
+  SYSTEM_CACHE_DEFAULT="$HOME/.librespot"
+fi
+SYSTEM_CACHE="${SYSTEM_CACHE-$SYSTEM_CACHE_DEFAULT}"
 
 # MDNS backend
 ZEROCONF_BACKEND="avahi"
@@ -108,6 +134,20 @@ LIBRESPOT_OPTS=("--name" "$PRETTY_HOSTNAME"
                 "--onevent" "$EVENT_HANDLER"
                 "--volume-ctrl" "$VOLUME_CTRL"
                 "--zeroconf-backend" "$ZEROCONF_BACKEND")  # Explicitly set the zeroconf backend
+
+# Persist credentials, so a restart does not depend on a client pushing them
+# back over zeroconf. Created 0700 explicitly: librespot writes
+# credentials.json without a mode of its own, so the directory is what keeps
+# the credentials off other local accounts.
+# Skipped rather than fatal when the directory cannot be created: a player
+# that starts without persistence is better than one that does not start.
+if [ -n "$SYSTEM_CACHE" ]; then
+  if mkdir -p -m 700 "$SYSTEM_CACHE" 2>/dev/null; then
+    LIBRESPOT_OPTS+=("--system-cache" "$SYSTEM_CACHE")
+  else
+    echo "Warning: could not create $SYSTEM_CACHE, starting without credential persistence."
+  fi
+fi
 
 # Check if we can get an access token from audiocontrol
 TOKEN=`curl -f http://localhost:1080/api/spotify/access_token`
