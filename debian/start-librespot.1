@@ -1,4 +1,4 @@
-.TH START-LIBRESPOT 1 "2025-01-27" "HiFiBerry" "User Commands"
+.TH START-LIBRESPOT 1 "2026-09-12" "HiFiBerry" "User Commands"
 .SH NAME
 start-librespot \- Librespot startup script for HiFiBerry devices
 .SH SYNOPSIS
@@ -22,10 +22,32 @@ Defaults to
 (unchanged behaviour). Set it via a systemd drop-in, e.g.
 .I Environment=VOLUME_CTRL=cubic ,
 for a more naturally curved Spotify Connect volume slider.
+.TP
+.B SYSTEM_CACHE
+Directory where librespot persists its Spotify credentials and volume, so the
+player can re-authenticate after a restart instead of waiting for a client to
+push credentials over zeroconf again. Defaults to
+.I ~/.librespot
+when running as a user service, and to
+.I /var/lib/librespot
+otherwise. Set it via a systemd drop-in, e.g.
+.I Environment=SYSTEM_CACHE=/var/lib/hifiberry/librespot ,
+or to an empty value to disable persistence. This is not the audio cache,
+which stays disabled.
 .SH FILES
 .I /etc/hostname
 .RS
 System hostname configuration
+.RE
+.PP
+.I ~/.librespot
+.RS
+Credentials and volume persisted by librespot, when running as a user service
+.RE
+.PP
+.I /var/lib/librespot
+.RS
+Same, when not running as a user service
 .RE
 .SH SEE ALSO
 .BR librespot (1),
