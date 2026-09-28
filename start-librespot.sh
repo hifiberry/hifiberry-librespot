@@ -13,6 +13,9 @@
 #           (~/.librespot) or /var/lib/librespot, the same split raat and
 #           squeezelite use. The directory is forced to 0700 on every start,
 #           and persistence is skipped when it cannot be created or secured.
+#           Cached credentials that Spotify explicitly rejects are renamed to
+#           credentials.json.rejected, so the next start falls back to
+#           discovery instead of failing on them again.
 # - v1.1.2: Added VOLUME_CTRL environment knob to select librespot's volume curve
 #           (linear|log|cubic|fixed). Default remains "linear" (unchanged behaviour);
 #           integrators can override via a systemd drop-in (Environment=VOLUME_CTRL=cubic).
@@ -149,9 +152,11 @@ LIBRESPOT_OPTS=("--name" "$PRETTY_HOSTNAME"
 # one that does not start, and credentials do not belong in a directory whose
 # mode could not be set -- on that upgraded device the mode belongs to a
 # system user this service no longer runs as.
+CACHED_CREDENTIALS=""
 if [ -n "$SYSTEM_CACHE" ]; then
   if mkdir -p "$SYSTEM_CACHE" 2>/dev/null && chmod 700 "$SYSTEM_CACHE" 2>/dev/null; then
     LIBRESPOT_OPTS+=("--system-cache" "$SYSTEM_CACHE")
+    CACHED_CREDENTIALS="$SYSTEM_CACHE/credentials.json"
   else
     echo "Warning: could not create or secure $SYSTEM_CACHE (needs to be a directory owned by $(id -un), mode 0700), starting without credential persistence."
   fi
@@ -162,6 +167,8 @@ TOKEN=`curl -f http://localhost:1080/api/spotify/access_token`
 if [ $? == 0 ]; then
   echo "Successfully obtained access token from audiocontrol, using it"
   LIBRESPOT_OPTS+=("--access-token" "$TOKEN")
+  # The token takes precedence: librespot does not log in with the cache.
+  CACHED_CREDENTIALS=""
 else
   echo "No access token available on audiocontrol"
 fi
@@ -178,6 +185,40 @@ if command -v config-soundcard >/dev/null 2>&1; then
     LIBRESPOT_OPTS+=("--alsa-mixer-control" "$MIXER_NAME")
     LIBRESPOT_OPTS+=("--alsa-mixer-device" "hw:$HW_INDEX")
   fi
+fi
+
+# Set aside cached credentials that Spotify explicitly rejects.
+# librespot logs in with them at startup, and when the account refuses them it
+# exits 1 without touching the cache, so every restart would read the same
+# file and fail again before discovery could receive replacement credentials.
+# Only the login reasons that condemn the credentials themselves count here: a
+# network or audio failure, or any other nonzero exit, leaves them alone. The
+# file is renamed rather than deleted, so it can still be inspected.
+# librespot's stderr runs through this filter, which forwards every line
+# unchanged. It ignores SIGTERM so that systemd reaping the unit once librespot
+# has exited cannot cut it off before it has read the final error; it still
+# ends on its own, at end of input, when librespot exits.
+watch_rejected_credentials() {
+  local credentials="$1" line
+  trap '' TERM INT
+  while IFS= read -r line || [ -n "$line" ]; do
+    printf '%s\n' "$line"
+    case "$line" in
+      *"Login failed with reason: Bad credentials"* | \
+      *"Login failed with reason: Could not validate credentials"* | \
+      *"Login failed with reason: Premium account required"*)
+        if [ -f "$credentials" ] && mv -f "$credentials" "$credentials.rejected"; then
+          echo "Spotify rejected the cached credentials, moved them to $credentials.rejected. Select this player from a Spotify client to authenticate again."
+        fi
+        ;;
+    esac
+  done
+}
+
+if [ -n "$CACHED_CREDENTIALS" ]; then
+  exec 3>&2
+  exec 2> >(watch_rejected_credentials "$CACHED_CREDENTIALS" >&3 2>&3)
+  exec 3>&-
 fi
 
 # Debug: print the command to be executed

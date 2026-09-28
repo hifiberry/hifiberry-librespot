@@ -1,4 +1,4 @@
-.TH START-LIBRESPOT 1 "2026-09-12" "HiFiBerry" "User Commands"
+.TH START-LIBRESPOT 1 "2026-09-28" "HiFiBerry" "User Commands"
 .SH NAME
 start-librespot \- Librespot startup script for HiFiBerry devices
 .SH SYNOPSIS
@@ -43,6 +43,23 @@ still belongs to the retired
 .B librespot
 system user \(em a warning is logged and the player starts without
 persistence.
+.IP
+When Spotify explicitly rejects the cached credentials (bad credentials,
+credentials that cannot be validated, or an account without Premium),
+librespot exits without touching them, and every restart would fail the same
+way. The script therefore renames
+.I credentials.json
+to
+.I credentials.json.rejected
+when librespot reports such a rejection, so the next start falls back to
+zeroconf discovery and a Spotify client can select the player again. Network
+and audio failures, or any other exit, leave the credentials in place. This
+only applies when the player logs in from the cache, not with a token from
+audiocontrol.
+.IP
+To forget the cached credentials by hand, stop the service and remove
+.I credentials.json
+from the directory.
 .SH FILES
 .I /etc/hostname
 .RS
@@ -57,6 +74,12 @@ Credentials and volume persisted by librespot, when running as a user service
 .I /var/lib/librespot
 .RS
 Same, when not running as a user service
+.RE
+.PP
+.I credentials.json.rejected
+.RS
+Cached credentials last rejected by Spotify, kept in the same directory for
+inspection. Safe to remove.
 .RE
 .SH SEE ALSO
 .BR librespot (1),
