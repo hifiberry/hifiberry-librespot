@@ -38,7 +38,10 @@ mock /usr/local/bin/hostnamectl 'echo TestPlayer'
 mock /usr/local/bin/pgrep 'exit 0'
 mock /usr/local/bin/avahi-browse 'exit 0'
 # shellcheck disable=SC2016 # expanded by the mocks, not here
-mock /usr/local/bin/curl '[ -n "${MOCK_TOKEN:-}" ] || exit 22; echo "$MOCK_TOKEN"'
+mock /usr/local/bin/curl 'case "$*" in
+  *api.spotify.com*) [ -n "${MOCK_ME:-}" ] || exit 22; echo "$MOCK_ME" ;;
+  *) [ -n "${MOCK_TOKEN:-}" ] || exit 22; echo "$MOCK_TOKEN" ;;
+esac'
 # shellcheck disable=SC2016
 mock /usr/bin/librespot '
 printf "%s\n" "$@" > "$MOCK_ARGS"
@@ -47,6 +50,8 @@ exit "${MOCK_STATUS:-0}"'
 
 REJECTED='[2026-09-28T12:00:00Z ERROR librespot] could not initialize spirc: Permission denied { Login failed with reason: Bad credentials }'
 UNAVAILABLE='[2026-09-28T12:00:00Z ERROR librespot] could not initialize spirc: Service unavailable { transport returned no data }'
+
+FREE_ACCOUNT='[2026-09-28T12:00:00Z ERROR librespot_core::session] librespot does not support "free" accounts.'
 
 # Runs the wrapper against a fresh cache holding credentials.json. The
 # command substitution only returns once every writer of the pipe has
@@ -88,6 +93,12 @@ check "credentials that cannot be validated are set aside" set_aside
 run env MOCK_STDERR="${REJECTED/Bad credentials/Premium account required}" MOCK_STATUS=1
 check "credentials of a free account are set aside" set_aside
 
+# What librespot prints when the cached credentials are those of a free
+# account: the login itself succeeds, so this is not a "Login failed" line.
+run env MOCK_STDERR="$FREE_ACCOUNT" MOCK_STATUS=1
+check "cached credentials of a free account are set aside" set_aside
+check "the free account error still reaches the journal" logged "$FREE_ACCOUNT"
+
 run env MOCK_STDERR="$UNAVAILABLE" MOCK_STATUS=1
 check "a network failure keeps the credentials" kept
 
@@ -104,6 +115,31 @@ check "the cache is passed to librespot" passed "--system-cache"
 run env MOCK_TOKEN=token MOCK_STDERR="$REJECTED" MOCK_STATUS=1
 check "a rejected audiocontrol token keeps the cached credentials" kept
 check "the audiocontrol token is passed to librespot" passed "--access-token"
+
+FREE='{"id":"x","product":"free","type":"user"}'
+PREMIUM='{"id":"x","product":"premium","type":"user"}'
+
+# librespot refuses a free account and exits 1, which systemd restarts every
+# ten seconds for ever, so a token of a free account must never reach it.
+run env MOCK_TOKEN=token MOCK_ME="$FREE" MOCK_STATUS=0
+check "the token of a free account is not passed to librespot" not passed "--access-token"
+check "a free account is logged" logged "not a premium account"
+check "the cache is still passed without the token" passed "--system-cache"
+
+run env MOCK_TOKEN=token MOCK_ME="${FREE/free/open}" MOCK_STATUS=0
+check "the token of an open account is not passed to librespot" not passed "--access-token"
+
+run env MOCK_TOKEN=token MOCK_ME="$PREMIUM" MOCK_STATUS=0
+check "the token of a premium account is passed to librespot" passed "--access-token"
+
+run env MOCK_TOKEN=token MOCK_STATUS=0
+check "a token whose account cannot be looked up is still passed" passed "--access-token"
+
+run env MOCK_TOKEN=token MOCK_ME='{"error":"unexpected"}' MOCK_STATUS=0
+check "a reply without a product is not taken for a free account" passed "--access-token"
+
+run env MOCK_TOKEN=token MOCK_ME="$FREE" MOCK_STATUS=1 MOCK_STDERR="$REJECTED"
+check "cached credentials are still watched when the token is dropped" set_aside
 
 CACHE="$WORK/cache.missing"
 mkdir -p "$CACHE"

@@ -1,3 +1,26 @@
+hifiberry-librespot (0.8.0.14) stable; urgency=medium
+
+  * start-librespot: do not pass the audiocontrol access token when the
+    account behind it is not premium. librespot refuses a free account and
+    exits 1, and the unit restarted it every ten seconds without end: with
+    RestartSec=10 and StartLimitBurst=5 in 30 s at most three starts fit the
+    window, so the start limit never trips, and each start logged in to
+    Spotify again. The wrapper now asks Spotify's /v1/me for the account's
+    product first and, for "free" or "open", starts without the token, on
+    zeroconf discovery and the cache, so a premium account selecting the
+    player from a Spotify client still works. A lookup that fails or returns
+    no product says nothing about the account, and the token is used as
+    before.
+  * start-librespot: set aside cached credentials that librespot logs in
+    with and then refuses as a free account. Since 0.8.0.13 the credentials
+    of the token's account are saved by --system-cache, so dropping the token
+    alone would have looped on the cache instead. The refusal is not a
+    "Login failed" line, which the filter watched for, but
+    'librespot does not support "free" accounts'; it is now matched too.
+    (start-librespot.sh v1.1.4). Covered by tests/start-librespot.sh.
+
+ -- HiFiBerry <support@hifiberry.com>  Tue, 29 Sep 2026 08:00:00 +0000
+
 hifiberry-librespot (0.8.0.13) stable; urgency=medium
 
   * start-librespot: pass --system-cache, so librespot persists the

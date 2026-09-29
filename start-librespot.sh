@@ -4,8 +4,14 @@
 # This script handles startup of librespot with the system's pretty hostname
 # and auto-configures audio parameters based on the detected sound card
 #
-# Version: 1.1.3
+# Version: 1.1.4
 # Changelog:
+# - v1.1.4: Do not pass the audiocontrol access token when it belongs to a free
+#           Spotify account. librespot exits 1 on one and the unit restarted it
+#           every ten seconds without end. It now starts on discovery and the
+#           cache instead. Cached credentials of a free account, which
+#           librespot logs in with and then refuses, are set aside like the
+#           ones Spotify rejects.
 # - v1.1.3: Added SYSTEM_CACHE environment knob and pass --system-cache so
 #           librespot persists its credentials. Without it the reusable
 #           credentials received over zeroconf only ever live in memory, so a
@@ -165,10 +171,28 @@ fi
 # Check if we can get an access token from audiocontrol
 TOKEN=`curl -f http://localhost:1080/api/spotify/access_token`
 if [ $? == 0 ]; then
-  echo "Successfully obtained access token from audiocontrol, using it"
-  LIBRESPOT_OPTS+=("--access-token" "$TOKEN")
-  # The token takes precedence: librespot does not log in with the cache.
-  CACHED_CREDENTIALS=""
+  # librespot only plays for premium accounts. Given the token of a free one
+  # it exits 1 ("does not support free accounts"), and systemd restarts it
+  # every RestartSec for ever, logging in to Spotify each time. So ask Spotify
+  # what the account is first, and leave the token out for a free one: the
+  # player then starts on discovery and the cache, and a premium account
+  # selecting it from a Spotify client still works. Only a definite "free" or
+  # "open" counts. A lookup that fails or has no product says nothing, and
+  # the token is used as before.
+  PRODUCT=$(curl -sf --max-time 5 -H "Authorization: Bearer $TOKEN" \
+              https://api.spotify.com/v1/me 2>/dev/null |
+            sed -n 's/.*"product" *: *"\([^"]*\)".*/\1/p')
+  case "$PRODUCT" in
+    free|open)
+      echo "The Spotify account linked in audiocontrol is not a premium account ($PRODUCT), not using its access token."
+      ;;
+    *)
+      echo "Successfully obtained access token from audiocontrol, using it"
+      LIBRESPOT_OPTS+=("--access-token" "$TOKEN")
+      # The token takes precedence: librespot does not log in with the cache.
+      CACHED_CREDENTIALS=""
+      ;;
+  esac
 else
   echo "No access token available on audiocontrol"
 fi
@@ -191,7 +215,7 @@ fi
 # librespot logs in with them at startup, and when the account refuses them it
 # exits 1 without touching the cache, so every restart would read the same
 # file and fail again before discovery could receive replacement credentials.
-# Only the login reasons that condemn the credentials themselves count here: a
+# Only the login failures that condemn the credentials themselves count here: a
 # network or audio failure, or any other nonzero exit, leaves them alone. The
 # file is renamed rather than deleted, so it can still be inspected.
 # librespot's stderr runs through this filter, which forwards every line
@@ -206,7 +230,8 @@ watch_rejected_credentials() {
     case "$line" in
       *"Login failed with reason: Bad credentials"* | \
       *"Login failed with reason: Could not validate credentials"* | \
-      *"Login failed with reason: Premium account required"*)
+      *"Login failed with reason: Premium account required"* | \
+      *'does not support "free" accounts'*)
         if [ -f "$credentials" ] && mv -f "$credentials" "$credentials.rejected"; then
           echo "Spotify rejected the cached credentials, moved them to $credentials.rejected. Select this player from a Spotify client to authenticate again."
         fi
