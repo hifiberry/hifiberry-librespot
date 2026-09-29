@@ -1,4 +1,4 @@
-.TH START-LIBRESPOT 1 "2025-01-27" "HiFiBerry" "User Commands"
+.TH START-LIBRESPOT 1 "2026-09-28" "HiFiBerry" "User Commands"
 .SH NAME
 start-librespot \- Librespot startup script for HiFiBerry devices
 .SH SYNOPSIS
@@ -22,10 +22,64 @@ Defaults to
 (unchanged behaviour). Set it via a systemd drop-in, e.g.
 .I Environment=VOLUME_CTRL=cubic ,
 for a more naturally curved Spotify Connect volume slider.
+.TP
+.B SYSTEM_CACHE
+Directory where librespot persists its Spotify credentials and volume, so the
+player can re-authenticate after a restart instead of waiting for a client to
+push credentials over zeroconf again. Defaults to
+.I ~/.librespot
+when running as a user service, and to
+.I /var/lib/librespot
+otherwise. Set it via a systemd drop-in, e.g.
+.I Environment=SYSTEM_CACHE=/var/lib/hifiberry/librespot ,
+or to an empty value to disable persistence. This is not the audio cache,
+which stays disabled.
+.IP
+The directory holds Spotify credentials, so its mode is set to 0700 on every
+start. If it cannot be created, or its mode cannot be set \(em on a device
+upgraded from 0.7.1.1 or earlier
+.I /var/lib/librespot
+still belongs to the retired
+.B librespot
+system user \(em a warning is logged and the player starts without
+persistence.
+.IP
+When Spotify explicitly rejects the cached credentials (bad credentials,
+credentials that cannot be validated, or an account without Premium),
+librespot exits without touching them, and every restart would fail the same
+way. The script therefore renames
+.I credentials.json
+to
+.I credentials.json.rejected
+when librespot reports such a rejection, so the next start falls back to
+zeroconf discovery and a Spotify client can select the player again. Network
+and audio failures, or any other exit, leave the credentials in place. This
+only applies when the player logs in from the cache, not with a token from
+audiocontrol.
+.IP
+To forget the cached credentials by hand, stop the service and remove
+.I credentials.json
+from the directory.
 .SH FILES
 .I /etc/hostname
 .RS
 System hostname configuration
+.RE
+.PP
+.I ~/.librespot
+.RS
+Credentials and volume persisted by librespot, when running as a user service
+.RE
+.PP
+.I /var/lib/librespot
+.RS
+Same, when not running as a user service
+.RE
+.PP
+.I credentials.json.rejected
+.RS
+Cached credentials last rejected by Spotify, kept in the same directory for
+inspection. Safe to remove.
 .RE
 .SH SEE ALSO
 .BR librespot (1),

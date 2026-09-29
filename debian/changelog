@@ -1,3 +1,51 @@
+hifiberry-librespot (0.8.0.13) stable; urgency=medium
+
+  * start-librespot: pass --system-cache, so librespot persists the
+    credentials it receives over zeroconf. Without it they only ever live in
+    memory: a restarted player has nothing to authenticate with and stays
+    silent until a Spotify client selects it again and pushes them back. The
+    only other non-zeroconf path is the audiocontrol token the wrapper reads
+    once before exec and passes as --access-token, and that one Spotify
+    expires after an hour and librespot cannot refresh from here, since the
+    refresh token belongs to audiocontrol. This is not the audio cache:
+    --disable-audio-cache stays on, and --system-cache stores only
+    credentials.json and volume, a few hundred bytes in total.
+    (start-librespot.sh v1.1.3; alepee)
+  * start-librespot: the directory follows the split start-raat and
+    start-squeezelite already use -- ~/.librespot under a user service,
+    /var/lib/librespot otherwise, which is also where spotify-event.sh
+    looks. SYSTEM_CACHE overrides the path, or disables persistence when set
+    to an empty value. Its mode is set to 0700 on every start, not only when
+    the directory is created, since librespot writes credentials.json
+    without a mode of its own and the directory is the only thing keeping it
+    off other local accounts. On a device upgraded from 0.7.1.1 or earlier
+    /var/lib/librespot already exists, created 0775 librespot:audio by the
+    postinst of the day for the event pipe, so a mode applied only at
+    creation would never reach it. A directory that cannot be created or
+    secured warns and persistence is skipped: a player that starts without
+    persistence is better than one that does not start, and credentials do
+    not belong in a directory whose mode could not be set.
+  * start-librespot: set cached credentials aside when Spotify explicitly
+    rejects them. librespot logs in with the cache at startup and, when the
+    account refuses it, exits 1 without touching the file, so every restart
+    read the same credentials and failed again ten seconds later, before
+    discovery could ever receive replacements. The wrapper now runs
+    librespot's stderr through a filter that forwards every line unchanged
+    and renames credentials.json to credentials.json.rejected on "Bad
+    credentials", "Could not validate credentials" or "Premium account
+    required", so the next start falls back to zeroconf discovery. Network
+    and audio failures, running out of access points, and any other nonzero
+    exit keep the credentials. The filter is only armed when the player logs
+    in from the cache: an audiocontrol token takes precedence, and its
+    rejection says nothing about the cached file. Covered by
+    tests/start-librespot.sh, run in a disposable debian:trixie container.
+  * start-librespot: as a side effect librespot now also restores its cached
+    volume at startup, but only when it falls back to softvol. With the ALSA
+    mixer, which is the nominal path here, the cached volume is ignored and
+    the hardware volume still wins.
+
+ -- HiFiBerry <support@hifiberry.com>  Fri, 11 Sep 2026 23:32:24 +0000
+
 hifiberry-librespot (0.8.0.12) stable; urgency=medium
 
   * postinst: stop writing the WebUI descriptor and icon into
