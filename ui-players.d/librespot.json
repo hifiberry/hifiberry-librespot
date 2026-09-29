@@ -5,6 +5,6 @@
     "icon": "librespot",
     "allow_change": true,
     "conflicts_with": ["soloist"],
-    "maintainer_name": "Wanted",
-    "maintainer_url": "https://github.com/hifiberry/hifiberry-os/blob/hbosng/docs/maintainers-wanted.md"
+    "maintainer_name": "Antoine Lépée",
+    "maintainer_url": "https://github.com/hifiberry/hifiberry-librespot/blob/main/MAINTAINERS.md"
 }
