@@ -1,0 +1,109 @@
+From 53f60a9596a2e78dbc442fcd9dbdefa3393efe20 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Antoine=20L=C3=A9p=C3=A9e?= <antoine@lepee.me>
+Date: Sun, 4 Oct 2026 09:10:37 +0200
+Subject: [PATCH 1/2] fix(connect): report volume at most VOLUME_UPDATE_DELAY
+ after a change
+
+The delayed volume update was a debounce: the sleep was rebuilt on every
+iteration of the select loop, so each incoming volume command, player event
+or position update pushed it back. A client scrolling its volume slider sends
+a continuous stream of commands and the device reported nothing until the
+stream stopped, seconds later. The official clients then revert their slider
+to the last volume the device reported, and the user's next scroll step
+starts from that stale position.
+
+The update is now due VOLUME_UPDATE_DELAY after the first unreported change,
+and later changes do not move that deadline.
+---
+ connect/src/spirc.rs | 33 +++++++++++++++++++++++----------
+ 1 file changed, 23 insertions(+), 10 deletions(-)
+
+diff --git a/connect/src/spirc.rs b/connect/src/spirc.rs
+index 3f9a06f..eba7bdb 100644
+--- a/connect/src/spirc.rs
++++ b/connect/src/spirc.rs
+@@ -41,7 +41,10 @@ use std::{
+     time::{Duration, SystemTime, UNIX_EPOCH},
+ };
+ use thiserror::Error;
+-use tokio::{sync::mpsc, time::sleep};
++use tokio::{
++    sync::mpsc,
++    time::{Instant, sleep, sleep_until},
++};
+ 
+ #[derive(Debug, Error)]
+ enum SpircError {
+@@ -100,9 +103,12 @@ struct SpircTask {
+     /// is set when transferring, and used after resolving the contexts to finish the transfer
+     pub transfer_state: Option<TransferState>,
+ 
+-    /// when set to true, it will update the volume after [VOLUME_UPDATE_DELAY],
+-    /// when no other future resolves, otherwise resets the delay
+-    update_volume: bool,
++    /// when set, the volume is reported to the other devices at that instant: [VOLUME_UPDATE_DELAY]
++    /// after the first unreported change. Later changes do not push it back, so a client sending
++    /// a continuous stream of changes (scrolling its volume slider) still gets the device's volume
++    /// confirmed while it scrolls, instead of only once it stops, by which time it has already
++    /// reverted its slider to the last volume the device reported
++    volume_update_at: Option<Instant>,
+ 
+     /// when set to true, it will update the volume after [UPDATE_STATE_DELAY],
+     /// when no other future resolves, otherwise resets the delay
+@@ -251,7 +257,7 @@ impl Spirc {
+             session,
+ 
+             transfer_state: None,
+-            update_volume: false,
++            volume_update_at: None,
+             update_state: false,
+ 
+             spirc_id,
+@@ -267,7 +273,7 @@ impl Spirc {
+                 task.set_volume(volume);
+                 // we don't want to update the volume initially,
+                 // we just want to set the mixer to the correct volume
+-                task.update_volume = false;
++                task.volume_update_at = None;
+             }
+             Err(why) => error!("failed to update initial volume: {why}"),
+         };
+@@ -444,7 +450,8 @@ impl SpircTask {
+ 
+             // when state and volume update have a higher priority than context resolving
+             // because of that the context resolving has to wait, so that the other tasks can finish
+-            let allow_context_resolving = !self.update_state && !self.update_volume;
++            let allow_context_resolving = !self.update_state && self.volume_update_at.is_none();
++            let volume_update_at = self.volume_update_at;
+ 
+             tokio::select! {
+                 // startup of the dealer requires a connection_id, which is retrieved at the very beginning
+@@ -519,8 +526,13 @@ impl SpircTask {
+                         error!("state update: {why}")
+                     }
+                 },
+-                _ = async { sleep(VOLUME_UPDATE_DELAY).await }, if self.update_volume => {
+-                    self.update_volume = false;
++                _ = async move {
++                    match volume_update_at {
++                        Some(at) => sleep_until(at).await,
++                        None => std::future::pending().await,
++                    }
++                }, if volume_update_at.is_some() => {
++                    self.volume_update_at = None;
+ 
+                     info!("delayed volume update for all devices: volume is now {}", self.connect_state.device_info().volume);
+                     if let Err(why) = self.connect_state.notify_volume_changed(&self.session).await {
+@@ -1809,7 +1821,8 @@ impl SpircTask {
+         let old_volume = self.connect_state.device_info().volume;
+         let new_volume = volume as u32;
+         if old_volume != new_volume || self.mixer.volume() != volume {
+-            self.update_volume = true;
++            self.volume_update_at
++                .get_or_insert_with(|| Instant::now() + VOLUME_UPDATE_DELAY);
+ 
+             self.connect_state.set_volume(new_volume);
+             self.mixer.set_volume(volume);
+-- 
+2.56.0
+
