@@ -1,3 +1,25 @@
+hifiberry-librespot (0.8.0.15) stable; urgency=medium
+
+  * librespot: carry two Spotify Connect volume fixes on top of v0.8.0,
+    applied from librespot-patches/ at build time until they are released
+    upstream.
+  * librespot: report the volume to the other devices at most 500 ms after a
+    change. The delayed update was a debounce, pushed back by every incoming
+    command, so while a client scrolled its volume slider the device
+    reported nothing until the scrolling stopped. The Spotify app then
+    reverted its slider to the last reported volume a second or two later,
+    and the next scroll step started from there: the volume moved less than
+    asked and the slider jumped back. Dragging the slider sent fewer
+    commands, which is why it worked better.
+  * librespot: start at the ALSA mixer's current volume when no
+    --initial-volume is given, as its help already says. It fell back to
+    50%, and since Spirc sets the mixer to its initial volume, every start
+    and every reconnect reset the hardware volume to 50% whatever another
+    source (Roon, the HiFiBerry UI) had set it to, and the Spotify app showed
+    a level that did not match what the speakers played.
+
+ -- HiFiBerry <support@hifiberry.com>  Sun, 04 Oct 2026 07:12:06 +0000
+
 hifiberry-librespot (0.8.0.14) stable; urgency=medium
 
   * start-librespot: do not pass the audiocontrol access token when the

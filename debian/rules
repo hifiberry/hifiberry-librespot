@@ -53,6 +53,15 @@ override_dh_auto_configure:
 		echo "Checking out version: $(LIBRESPOT_VERSION)"; \
 		git checkout $(LIBRESPOT_VERSION); \
 	fi
+	# Apply the fixes carried until they are released upstream. The source
+	# tree is reset first, so a rebuild in the same tree applies them again
+	# instead of failing on patches already applied.
+	cd librespot-source && \
+	git reset -q --hard && \
+	for patch in $(CURDIR)/librespot-patches/*.patch; do \
+		echo "Applying $$(basename $$patch)"; \
+		git apply $$patch || exit 1; \
+	done
 	# Create space-optimized Cargo config
 	mkdir -p librespot-source/.cargo; \
 	echo '[profile.release]' > librespot-source/.cargo/config.toml; \
