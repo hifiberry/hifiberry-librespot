@@ -2,8 +2,7 @@ hifiberry-librespot (0.8.0.15) stable; urgency=medium
 
   * librespot: carry two Spotify Connect volume fixes on top of v0.8.0,
     applied from librespot-patches/ at build time until they are released
-    upstream. Both patches were written and contributed by Antoine Lépée
-    (alepee).
+    upstream. Both patches were written and contributed by alepee.
   * librespot: report the volume to the other devices at most 500 ms after a
     change. The delayed update was a debounce, pushed back by every incoming
     command, so while a client scrolled its volume slider the device
