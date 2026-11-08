@@ -1,3 +1,16 @@
+hifiberry-librespot (0.8.0.16) stable; urgency=medium
+
+  * start-librespot: add a Players > Spotify toggle to stop Spotify Connect
+    driving the ALSA mixer. When allow_volume_control is off, the wrapper
+    uses softvol with --volume-ctrl fixed instead. Default stays on.
+    If config-server cannot be read at startup, librespot still starts
+    with volume control disabled. (start-librespot.sh v1.2.0)
+  * librespot: carry librespot-org/librespot#1642 so --volume-ctrl fixed
+    actually disables Connect volume control (drobotk). Applied from
+    librespot-patches/ until it is in a release.
+
+ -- HiFiBerry <support@hifiberry.com>  Wed, 04 Nov 2026 16:30:00 +0000
+
 hifiberry-librespot (0.8.0.15) stable; urgency=medium
 
   * librespot: carry two Spotify Connect volume fixes on top of v0.8.0,

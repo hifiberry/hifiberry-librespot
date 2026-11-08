@@ -4,8 +4,13 @@
 # This script handles startup of librespot with the system's pretty hostname
 # and auto-configures audio parameters based on the detected sound card
 #
-# Version: 1.1.4
+# Version: 1.2.0
 # Changelog:
+# - v1.2.0: Honour player.librespot.allow_volume_control from ConfigDB (WebUI
+#           Services > Players > Spotify setting). When false, skip ALSA mixer
+#           attachment and use softvol + fixed volume so Spotify cannot drive
+#           hardware gain. Optional ALLOW_VOLUME_CONTROL env override for
+#           debugging/drop-ins.
 # - v1.1.4: Do not pass the audiocontrol access token when it belongs to a free
 #           Spotify account. librespot exits 1 on one and the unit restarted it
 #           every ten seconds without end. It now starts on discovery and the
@@ -66,6 +71,32 @@ BACKEND="rodio"
 #   [Service]
 #   Environment=VOLUME_CTRL=cubic
 VOLUME_CTRL="${VOLUME_CTRL:-linear}"
+
+
+# Whether Spotify Connect may drive the ALSA/system mixer.
+# Read from ConfigDB (player.librespot.allow_volume_control), or override with
+# a drop-in: Environment=ALLOW_VOLUME_CONTROL=false
+if [ -z "${ALLOW_VOLUME_CONTROL:-}" ]; then
+  # With `?default=true` an unset key is not an error, so curl's -f is safe.
+  ALLOW_VOLUME_CONTROL=$(curl -sf --max-time 2 --retry 3 --retry-delay 1 --retry-connrefused \
+      "http://localhost:1081/api/v1/key/player.librespot.allow_volume_control?default=true" 2>/dev/null \
+    | sed -n 's/.*"value"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p')
+fi
+
+# Same rule as the configurator's coerce_setting_value(): anything else is off,
+# including an unreachable config-server, so Spotify only drives the hardware
+# mixer when the setting was actually read as on.
+case "${ALLOW_VOLUME_CONTROL,,}" in
+  true|1|yes|on) ALLOW_VOLUME_CONTROL=true ;;
+  *)
+    [ -n "$ALLOW_VOLUME_CONTROL" ] || echo "Warning: could not read player.librespot.allow_volume_control, starting with Spotify volume control disabled"
+    ALLOW_VOLUME_CONTROL=false ;;
+esac
+
+if [ "$ALLOW_VOLUME_CONTROL" = "false" ]; then
+  # Softvol at 100% so Connect cannot change level (see --mixer softvol below)
+  VOLUME_CTRL="fixed"
+fi
 
 # Directory where librespot persists credentials and volume.
 # This is not the audio cache: --disable-audio-cache stays on below, and
@@ -197,11 +228,17 @@ else
   echo "No access token available on audiocontrol"
 fi
 
-# Try to get both mixer name and hardware index from configurator
-if command -v config-soundcard >/dev/null 2>&1; then
+# Mixer: ALSA when Spotify volume control is allowed, otherwise softvol fixed
+# at 100% so Connect cannot move the hardware/system volume.
+if [ "$ALLOW_VOLUME_CONTROL" = "false" ]; then
+  echo "Spotify volume control disabled; using softvol with fixed volume"
+  LIBRESPOT_OPTS+=("--mixer" "softvol")
+  LIBRESPOT_OPTS+=("--initial-volume" "100")
+elif command -v config-soundcard >/dev/null 2>&1; then
+  # Try to get both mixer name and hardware index from configurator
   MIXER_NAME=$(config-soundcard --no-eeprom --volume-control-softvol 2>/dev/null)
   HW_INDEX=$(config-soundcard --no-eeprom --hw 2>/dev/null)
-  
+
   # Only use all three audio options together if both mixer and hw index are available
   if [ $? -eq 0 ] && [ -n "$MIXER_NAME" ] && [ -n "$HW_INDEX" ]; then
     echo "Using mixer control: $MIXER_NAME and hardware device: hw:$HW_INDEX"

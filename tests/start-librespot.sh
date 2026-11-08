@@ -33,13 +33,20 @@ mock() {
   printf '#!/bin/bash\n%s\n' "$*" > "$path"
   chmod +x "$path"
 }
-mock /usr/bin/config-soundcard 'exit 0'
+# shellcheck disable=SC2016
+mock /usr/bin/config-soundcard 'case "$*" in
+  *--volume-control-softvol*) echo Digital ;;
+  *--hw*) echo 0 ;;
+esac'
 mock /usr/local/bin/hostnamectl 'echo TestPlayer'
 mock /usr/local/bin/pgrep 'exit 0'
 mock /usr/local/bin/avahi-browse 'exit 0'
 # shellcheck disable=SC2016 # expanded by the mocks, not here
 mock /usr/local/bin/curl 'case "$*" in
   *api.spotify.com*) [ -n "${MOCK_ME:-}" ] || exit 22; echo "$MOCK_ME" ;;
+  *localhost:1081/api/v1/key/*)
+    [ -n "${MOCK_CONFIG:-}" ] || exit 7
+    echo "{\"key\":\"player.librespot.allow_volume_control\",\"value\":\"$MOCK_CONFIG\"}" ;;
   *) [ -n "${MOCK_TOKEN:-}" ] || exit 22; echo "$MOCK_TOKEN" ;;
 esac'
 # shellcheck disable=SC2016
@@ -140,6 +147,37 @@ check "a reply without a product is not taken for a free account" passed "--acce
 
 run env MOCK_TOKEN=token MOCK_ME="$FREE" MOCK_STATUS=1 MOCK_STDERR="$REJECTED"
 check "cached credentials are still watched when the token is dropped" set_aside
+
+hardware_mixer() { passed "alsa" && passed "Digital" && passed "hw:0" && passed "linear"; }
+fixed_softvol() { passed "softvol" && passed "fixed" && passed "100" && not passed "alsa"; }
+
+run env MOCK_CONFIG=true
+check "allowed volume control attaches the ALSA mixer" hardware_mixer
+
+run env MOCK_CONFIG=false
+check "disabled volume control uses fixed softvol" fixed_softvol
+check "disabled volume control is not reported as unreadable" not logged "could not read"
+
+run env MOCK_CONFIG=True
+check "True counts as on" hardware_mixer
+
+run env MOCK_CONFIG=1
+check "1 counts as on" hardware_mixer
+
+run env MOCK_CONFIG=bogus
+check "a bogus value counts as off" fixed_softvol
+check "a bogus value still starts librespot" [ "$STATUS" -eq 0 ]
+
+run env MOCK_STATUS=0
+check "an unreachable config-server disables volume control" fixed_softvol
+check "an unreachable config-server still starts librespot" [ "$STATUS" -eq 0 ]
+check "an unreachable config-server is logged" logged "could not read player.librespot.allow_volume_control"
+
+run env ALLOW_VOLUME_CONTROL=on
+check "the environment override skips ConfigDB" hardware_mixer
+
+run env ALLOW_VOLUME_CONTROL=false MOCK_CONFIG=true
+check "a false environment override wins over ConfigDB" fixed_softvol
 
 CACHE="$WORK/cache.missing"
 mkdir -p "$CACHE"
