@@ -1,3 +1,13 @@
+hifiberry-librespot (0.8.0.16) stable; urgency=medium
+
+  * Restart librespot on upgrade, and stop it on removal. It runs as a
+    systemd user service of the HiFiBerry user, which debhelper neither
+    restarts nor stops, so an upgrade left the old code running -- and a
+    removal left it running at all -- until the next reboot or login. The
+    restart is a try-restart: a player switched off in the WebUI stays off.
+
+ -- HiFiBerry <support@hifiberry.com>  Mon, 09 Nov 2026 14:52:10 +0000
+
 hifiberry-librespot (0.8.0.15) stable; urgency=medium
 
   * librespot: carry two Spotify Connect volume fixes on top of v0.8.0,
