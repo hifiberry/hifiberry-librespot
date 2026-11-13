@@ -1,3 +1,16 @@
+hifiberry-librespot (0.8.0.17) stable; urgency=medium
+
+  * librespot: play the track picked in a playlist from the Spotify app on
+    Android. The app sends the picked track's uid with an empty uri, and
+    librespot took the empty uri, could not find it ("Failed to resolve
+    index by Some(Uri(""))") and played the first track of the playlist
+    instead, whichever track was tapped. Empty values now count as not
+    provided, so the uid is used. Carried in librespot-patches/ until it
+    is released upstream (librespot-org/librespot#1795, by briandet).
+    Refs #10.
+
+ -- HiFiBerry <support@hifiberry.com>  Fri, 13 Nov 2026 18:00:00 +0000
+
 hifiberry-librespot (0.8.0.16) stable; urgency=medium
 
   * Restart librespot on upgrade, and stop it on removal. It runs as a
