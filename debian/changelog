@@ -1,3 +1,15 @@
+hifiberry-librespot (0.8.0.18+git20261107.15e02e8) stable; urgency=medium
+
+  [ Antoine Lépée ]
+  * librespot: when one of the addresses Spotify resolves to does not answer,
+    as on a network that advertises IPv6 but does not route it, connect over
+    the other one within a few hundred milliseconds instead of waiting for
+    the TCP timeout. Name resolution, connection and proxy setup now give
+    up after five seconds, and the proxy URL is no longer logged.
+    Carries librespot-org/librespot#1803 (not merged yet). Closes #13.
+
+ -- HiFiBerry <support@hifiberry.com>  Fri, 20 Nov 2026 12:00:00 +0000
+
 hifiberry-librespot (0.8.0.17+git20261107.15e02e8) stable; urgency=medium
 
   [ Eugeny Shcheglov ]
